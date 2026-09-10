@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A crescent moon with a trail of z's: a machine asleep. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+  android:width="108dp"
+  android:height="108dp"
+  android:viewportWidth="108"
+  android:viewportHeight="108">
+  <path
+    android:fillColor="#8AB4F8"
+    android:pathData="M56,30c-11.6,0 -21,9.4 -21,21s9.4,21 21,21c5.2,0 10,-1.9 13.7,-5.1c-1.7,0.4 -3.4,0.6 -5.2,0.6c-11.6,0 -21,-9.4 -21,-21c0,-6.4 2.9,-12.2 7.4,-16.1C50,30.1 53,30 56,30z" />
+  <path
+    android:fillColor="#F8C471"
+    android:pathData="M66,34h11v3l-7,7h7v3H66v-3l7,-7h-7z" />
+  <path
+    android:fillColor="#F8C471"
+    android:pathData="M70,54h8v2.5l-5,5h5V64h-8v-2.5l5,-5h-5z" />
+</vector>

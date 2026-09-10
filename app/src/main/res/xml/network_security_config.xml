@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A sandman instance usually sits on a lab network behind a port-forward or an
+  in-cluster service, addressed over plain HTTP or fronted by a certificate
+  from a private CA. Both relaxations below are deliberate and are what makes
+  the app usable at all on such a network; anything served with a publicly
+  trusted certificate is still verified the normal way.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+  <base-config
+    cleartextTrafficPermitted="true"
+    tools:ignore="AcceptsUserCertificates,InsecureBaseConfiguration">
+    <trust-anchors>
+      <certificates src="system" />
+      <certificates src="user" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

@@ -1,0 +1,33 @@
+# Signing material. The keystore lives outside the repository; this file only
+# points at it, and it still carries the passwords.
+keystore.properties
+*.jks
+*.keystore
+
+# Gradle
+.gradle/
+build/
+local.properties
+captures/
+.kotlin/
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+release/
+
+# IDE
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+
+# General
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.bak
+*.tmp
