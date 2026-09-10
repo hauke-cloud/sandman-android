@@ -1,0 +1,187 @@
+---
+name: CI
+
+# The org's shared build action is built around a container image and a Helm
+# chart, neither of which an APK has. This is the Android equivalent: test and
+# lint every change, and on a tag produce an APK signed with the release key.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: "17"
+  # Kept in step with compileSdk in app/build.gradle.kts.
+  ANDROID_API_LEVEL: "37.0"
+  ANDROID_BUILD_TOOLS: "37.0.0"
+
+jobs:
+  build:
+    name: Test and lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platforms;android-${{ env.ANDROID_API_LEVEL }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      # Also verifies the checksum of the committed gradle-wrapper.jar, which
+      # is the one binary in this repository and worth not taking on trust.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          validate-wrappers: true
+
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Lint
+        run: ./gradlew lintDebug
+
+      - name: Assemble debug
+        run: ./gradlew assembleDebug
+
+      - name: Upload reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+            app/build/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  release:
+    name: Signed release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: >-
+            platforms;android-${{ env.ANDROID_API_LEVEL }}
+            build-tools;${{ env.ANDROID_BUILD_TOOLS }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          validate-wrappers: true
+
+      # RUNNER_TEMP rather than the workspace: nothing there can be picked up
+      # by an artifact upload or left behind in a build directory.
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SANDMAN_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::error::SANDMAN_KEYSTORE_BASE64 is not set. A release has to be" \
+                 "signed with the release key; without it the build would fall back" \
+                 "to a debug key and the APK could not upgrade an installed app."
+            exit 1
+          fi
+          printf '%s' "${KEYSTORE_BASE64}" | base64 -d > "${RUNNER_TEMP}/release.jks"
+          chmod 600 "${RUNNER_TEMP}/release.jks"
+
+      - name: Assemble release
+        env:
+          SANDMAN_VERSION_NAME: ${{ github.ref_name }}
+          SANDMAN_KEYSTORE_FILE: ${{ runner.temp }}/release.jks
+          SANDMAN_KEYSTORE_PASSWORD: ${{ secrets.SANDMAN_KEYSTORE_PASSWORD }}
+          SANDMAN_KEY_ALIAS: ${{ secrets.SANDMAN_KEY_ALIAS }}
+          SANDMAN_KEY_PASSWORD: ${{ secrets.SANDMAN_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease
+
+      # The whole point of a fixed key is that an installed app can be updated
+      # in place. A key that quietly changed would only be discovered by
+      # everyone who already has the app -- so it is checked here instead.
+      - name: Verify the signature
+        env:
+          EXPECTED: ${{ vars.SANDMAN_SIGNING_SHA256 }}
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          apksigner="${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}/apksigner"
+
+          "${apksigner}" verify --verbose --print-certs "${apk}"
+          digest=$("${apksigner}" verify --print-certs "${apk}" \
+            | awk '/SHA-256 digest/ { print $NF; exit }')
+
+          echo "signing certificate SHA-256: ${digest}"
+          echo "### Signed with \`${digest}\`" >> "${GITHUB_STEP_SUMMARY}"
+
+          if [ -z "${EXPECTED}" ]; then
+            echo "::warning::Set the repository variable SANDMAN_SIGNING_SHA256 to" \
+                 "${digest} so that a future key change fails here rather than on a phone."
+            exit 0
+          fi
+          if [ "${digest}" != "${EXPECTED}" ]; then
+            echo "::error::This APK is signed with ${digest}, but this repository" \
+                 "releases ${EXPECTED}. An APK signed with a different key cannot" \
+                 "update an installed one."
+            exit 1
+          fi
+
+      - name: Name the artifact after the tag
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk \
+             "dist/sandman-${GITHUB_REF_NAME}.apk"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: sandman-${{ github.ref_name }}-apk
+          path: dist/*.apk
+          retention-days: 90
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*.apk
+          draft: false
+          generate_release_notes: true
+
+      - name: Shred the signing key
+        if: always()
+        run: shred -u "${RUNNER_TEMP}/release.jks" 2>/dev/null || rm -f "${RUNNER_TEMP}/release.jks"

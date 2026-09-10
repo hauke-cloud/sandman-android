@@ -29,6 +29,28 @@ fun resolveKeystore(path: String): File {
   return File(expanded).let { if (it.isAbsolute) it else rootProject.file(expanded) }
 }
 
+// The release tag is the single source of the version: CI passes it in, and a
+// local build falls back to the placeholder below.
+val releaseVersionName: String =
+  System.getenv("SANDMAN_VERSION_NAME")?.trim()?.removePrefix("v")?.takeIf { it.isNotEmpty() }
+    ?: "0.1.0"
+
+/**
+ * Turns 1.2.3 into 10203.
+ *
+ * Android will not install an APK whose versionCode is lower than the one
+ * already there, so this has to rise with the tag rather than being edited by
+ * hand and forgotten. Anything after a hyphen -- 1.2.3-rc1 -- is a label on
+ * the same code, and does not change it.
+ */
+fun versionCodeOf(name: String): Int {
+  val parts = name.substringBefore('-').split('.')
+  val major = parts.getOrNull(0)?.toIntOrNull() ?: 0
+  val minor = parts.getOrNull(1)?.toIntOrNull() ?: 0
+  val patch = parts.getOrNull(2)?.toIntOrNull() ?: 0
+  return major * 10_000 + minor * 100 + patch
+}
+
 android {
   namespace = "cloud.hauke.sandman"
   compileSdk = 37
@@ -37,8 +59,8 @@ android {
     applicationId = "cloud.hauke.sandman"
     minSdk = 26
     targetSdk = 37
-    versionCode = 1
-    versionName = "0.1.0"
+    versionName = releaseVersionName
+    versionCode = versionCodeOf(releaseVersionName).coerceAtLeast(1)
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

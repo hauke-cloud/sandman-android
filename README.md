@@ -81,7 +81,8 @@ It writes a 4096-bit RSA key to
 build can replace an installed one. Lose it and every device has to uninstall
 before it can take another update.
 
-CI can skip the properties file and use the environment instead:
+The build reads the environment instead of the properties file when one is
+set, which is how CI supplies the key:
 
 | Property | Environment variable |
 |---|---|
@@ -92,6 +93,48 @@ CI can skip the properties file and use the environment instead:
 
 Without either, the build falls back to the stock debug key so a fresh clone
 still compiles — it just cannot upgrade an existing install.
+
+## Continuous integration
+
+[`ci.yml`](.github/workflows/ci.yml) runs the unit tests, lint and a debug
+build on every push and pull request. That job needs no secrets, so a pull
+request from a fork still builds.
+
+A tag matching `v*` additionally produces a signed APK and attaches it to a
+GitHub release. Push the signing material once:
+
+```sh
+hack/ci-secrets.sh          # --dry-run first, if you like
+```
+
+It reads `keystore.properties` and sets, via `gh`:
+
+| | |
+|---|---|
+| `SANDMAN_KEYSTORE_BASE64` | secret — the keystore itself |
+| `SANDMAN_KEYSTORE_PASSWORD` | secret |
+| `SANDMAN_KEY_ALIAS` | secret |
+| `SANDMAN_KEY_PASSWORD` | secret |
+| `SANDMAN_SIGNING_SHA256` | **variable** — the certificate fingerprint |
+
+The last one is a repository variable rather than a secret because a
+certificate fingerprint is public, and because CI prints it. After signing, the
+release job compares the APK's certificate against it and fails on a mismatch.
+A key that quietly changed would otherwise only be discovered by everyone who
+already has the app installed and cannot update it. If the variable is unset
+the job passes with a warning naming the fingerprint to set.
+
+Cutting a release:
+
+```sh
+git tag -a v0.2.0 -m 'v0.2.0'
+git push origin v0.2.0
+```
+
+The tag is the only place a version is written down. `v0.2.0` becomes
+`versionName 0.2.0` and `versionCode 200` — `major * 10000 + minor * 100 +
+patch`, so the number rises with the tag and Android will accept the upgrade.
+A local build with no tag in the environment is `0.1.0`.
 
 ## The API it speaks
 
