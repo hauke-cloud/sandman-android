@@ -1,174 +1,106 @@
-# sandman-android
+<!-- llm-readme-management spec=1 commit=f4a83bbe0a39eb8e488d4e332a47d08a7c613665 template=default model=qwen3.8-27b-q4 digest=598d66067ca0 generated=2026-10-12T11:49:09Z -->
+<a href="https://hauke.cloud" target="_blank"><img src="https://img.shields.io/badge/home-hauke.cloud-brightgreen" alt="hauke.cloud" style="display: block;" /></a>
+<a href="https://github.com/hauke-cloud" target="_blank"><img src="https://img.shields.io/badge/github-hauke.cloud-blue" alt="hauke.cloud Github Organisation" style="display: block;" /></a>
+<a href="https://github.com/hauke-cloud/llm-readme-management" target="_blank"><img src="https://img.shields.io/badge/template-default-orange" alt="Repository type - default" style="display: block;" /></a>
 
-An Android client for [sandman](https://github.com/hauke-cloud/sandman): start
-and stop the machines behind your Kubernetes nodes from a phone.
 
-sandman does the work — a magic packet to wake a machine, a cordon, a drain and
-a shutdown pod to put one to sleep. This app is the button. It reads the fleet
-from sandman's REST API and records a desired power state; the controller
-notices and acts, which means a request survives the app being closed, the
-phone leaving the network, or sandman itself restarting.
+# Sandman Android
 
-## What it does
 
-- **The fleet at a glance.** Every `SandmanDevice`, its phase, and a count per
-  phase across the top.
-- **Start and stop.** One tap to wake a machine. Stopping asks first, because it
-  drains a node and moves its workloads.
-- **Release.** Hand a machine back to nobody: sandman keeps reporting its state
-  and stops acting on it. It is the way out of a stop that is not a start.
-- **A reason on the record.** Every power request carries who asked and why.
-  sandman keeps both as annotations on the device, so the next person to look
-  can tell a maintenance window from a mistake.
-- **Polling that knows when to hurry.** A machine that is starting or stopping
-  is polled every few seconds; an idle fleet at whatever interval you set. Both
-  stop when the screen is not in front of you.
+<img src="https://raw.githubusercontent.com/hauke-cloud/.github/main/resources/img/organisation-logo-small.png" alt="hauke.cloud logo" width="109" height="123" align="right">
 
-## Setting it up
 
-Open **Settings** and give it:
+<llm header>
 
-| Field | |
-|---|---|
-| Address | The root of the sandman API, e.g. `http://sandman.lab:8080`. A bare host gets `http://`; a sub-path is kept, so an instance behind a reverse proxy works. |
-| Bearer token | Only if sandman was started with `--token`. Leave empty otherwise. |
-| Your name | Recorded on every start and stop. Left empty, the phone's model is used. |
+An Android app in Kotlin and Jetpack Compose that gives you a phone-based control panel for a sandman instance. You list the machines behind your Kubernetes nodes and send start, stop, or release commands — PXE/WOL wake, cordon, drain, shutdown — without a terminal. It is for operators of a lab or homelab fleet who already run sandman.
 
-**Test connection** does a real authenticated round trip and tells you how many
-devices came back.
+</llm>
 
-If sandman is inside the cluster and not exposed, a port-forward is the usual
-way in:
 
-```sh
+## :book: Description
+
+<llm description>
+
+Sandman is a controller that manages the power state of physical machines backing Kubernetes nodes: PXE/WOL wake, cordon, drain, and shutdown. This repository is the Android companion app — a phone client that lets you see the fleet and send power requests without a terminal. You point it at your sandman instance, and it polls the device list, shows each machine's current phase, and lets you start, stop, or release a node with a tap. Every request carries your name and an optional reason, which sandman records as annotations.
+
+- Lists all `SandmanDevice` entries with a per-phase count summary, polled on a configurable interval (default 15 s; shortens to 3 s while any device is in flight)
+- Sends `start`, `stop` (confirm dialog by default), and `release` requests through sandman's REST API
+- Settings screen for the sandman address, bearer token, display name, refresh interval, and a "Test connection" round-trip
+- Tolerates newer sandman servers: unrecognised phases decode as `Unknown` rather than failing
+
+It is the mobile front-end for the [sandman](https://github.com/hauke-cloud/sandman) controller in the same organisation.
+
+</llm>
+
+
+## 🚀 Getting started
+
+<llm getting_started hint="Assume nothing about the ecosystem beyond what the analysis names. If the repository has no build step, say what a reader does with it instead.">
+
+1. Clone the repository.
+
+```bash
+git clone https://github.com/hauke-cloud/sandman-android.git
+cd sandman-android
+```
+
+2. With `local.properties` pointing at your Android SDK (Android Studio writes this file for you), build the debug APK.
+
+```bash
+./gradlew assembleDebug
+```
+
+3. If your sandman instance is an in-cluster service with no external exposure, forward it onto your lab network.
+
+```bash
 kubectl -n sandman port-forward svc/sandman 8080:8080 --address 0.0.0.0
 ```
 
-Cleartext HTTP and user-installed CA certificates are both permitted — see
-[`network_security_config.xml`](app/src/main/res/xml/network_security_config.xml).
-A lab network is the expected home for this app.
+Install `app/build/outputs/apk/debug/app-debug.apk` on a phone running Android 8.0 or later, open the app, and enter your sandman address (for example `http://sandman.lab:8080`) in Settings. Tap **Test connection** to confirm the app can reach the API; the device list appears once the address is correct.
 
-## Building
+</llm>
 
-Requires JDK 17+ and an Android SDK with platform 37.
 
-```sh
-./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease        # minified and shrunk, ~1.8 MB
-./gradlew testDebugUnitTest lintDebug
+## :airplane: Usage
+
+<llm usage>
+
+Once the app is installed, you work with it through three screens: the device list, a per-device detail view, and Settings.
+
+**Point the app at your sandman instance.** Open Settings and enter the base URL (for example `http://sandman.lab:8080`). If sandman was started with `--token`, paste the bearer token into the token field. Optionally set a display name that is recorded as `requestedBy` on every power request; without one the app falls back to `sandman-android (<phone model>)`. Tap **Test connection** to confirm an authenticated `GET /api/v1/devices` round-trip succeeds. If sandman is an in-cluster service with no external exposure, open a port-forward from your workstation:
+
+```bash
+kubectl -n sandman port-forward svc/sandman 8080:8080 --address 0.0.0.0
 ```
 
-`local.properties` must point at your SDK (`sdk.dir=...`); Android Studio
-writes it for you.
+Then use your workstation's LAN IP as the base URL.
 
-## Signing
+**Watch the fleet.** The device list polls on the interval you set in Settings (default 15 s; choices 5, 10, 15, 30, 60). While any device is in flight the interval shortens to 3 s. Polling pauses when the screen is not visible. Each row shows the device name and its current phase; a summary bar counts devices per phase.
 
-Both build types are signed with the **same** key, and neither uses an
-application-id suffix. A debug build therefore installs straight over a release
-build and vice versa — no uninstall, no lost settings.
+**Act on a machine.** Tap a device to open its detail view (2 s poll while in flight). From there you can:
 
-Generate the key once:
+- **Start** — one tap, no confirmation.
+- **Stop** — a confirm dialog appears by default because stopping drains the node and moves workloads. Disable the dialog in Settings (`confirmStop`).
+- **Release** — returns the machine to unmanaged.
 
-```sh
-hack/create-keystore.sh
-```
+Every request carries your `requestedBy` name and an optional reason, which sandman records as annotations on the node.
 
-It writes a 4096-bit RSA key to
-`~/.config/hauke-cloud/sandman-android/release.jks` and a git-ignored
-`keystore.properties` pointing at it, with a random password.
+</llm>
 
-**Back both up.** The signing key is the only thing that decides whether a new
-build can replace an installed one. Lose it and every device has to uninstall
-before it can take another update.
 
-The build reads the environment instead of the properties file when one is
-set, which is how CI supplies the key:
+## 📄 License
 
-| Property | Environment variable |
-|---|---|
-| `storeFile` | `SANDMAN_KEYSTORE_FILE` |
-| `storePassword` | `SANDMAN_KEYSTORE_PASSWORD` |
-| `keyAlias` | `SANDMAN_KEY_ALIAS` |
-| `keyPassword` | `SANDMAN_KEY_PASSWORD` |
+This Project is licensed under the GNU General Public License v3.0
 
-Without either, the build falls back to the stock debug key so a fresh clone
-still compiles — it just cannot upgrade an existing install.
+- see the [LICENSE](LICENSE) file for details.
 
-## Continuous integration
 
-[`ci.yml`](.github/workflows/ci.yml) runs the unit tests, lint and a debug
-build on every push and pull request. That job needs no secrets, so a pull
-request from a fork still builds.
+## :coffee: Contributing
 
-A tag matching `v*` additionally produces a signed APK and attaches it to a
-GitHub release. Push the signing material once:
+To become a contributor, please check out the [CONTRIBUTING](CONTRIBUTING.md) file.
 
-```sh
-hack/ci-secrets.sh          # --dry-run first, if you like
-```
 
-It reads `keystore.properties` and sets, via `gh`:
+## :email: Contact
 
-| | |
-|---|---|
-| `SANDMAN_KEYSTORE_BASE64` | secret — the keystore itself |
-| `SANDMAN_KEYSTORE_PASSWORD` | secret |
-| `SANDMAN_KEY_ALIAS` | secret |
-| `SANDMAN_KEY_PASSWORD` | secret |
-| `SANDMAN_SIGNING_SHA256` | **variable** — the certificate fingerprint |
-
-The last one is a repository variable rather than a secret because a
-certificate fingerprint is public, and because CI prints it. After signing, the
-release job compares the APK's certificate against it and fails on a mismatch.
-A key that quietly changed would otherwise only be discovered by everyone who
-already has the app installed and cannot update it. If the variable is unset
-the job passes with a warning naming the fingerprint to set.
-
-Cutting a release:
-
-```sh
-git tag -a v0.2.0 -m 'v0.2.0'
-git push origin v0.2.0
-```
-
-The tag is the only place a version is written down. `v0.2.0` becomes
-`versionName 0.2.0` and `versionCode 200` — `major * 10000 + minor * 100 +
-patch`, so the number rises with the tag and Android will accept the upgrade.
-A local build with no tag in the environment is `0.1.0`.
-
-## The API it speaks
-
-| | |
-|---|---|
-| `GET /api/v1/devices` | every device, with a count per phase |
-| `GET /api/v1/devices/{name}` | one device |
-| `POST /api/v1/devices/{name}/start` | wake it |
-| `POST /api/v1/devices/{name}/stop` | drain and power it off |
-| `POST /api/v1/devices/{name}/release` | stop managing it |
-
-Power requests carry `{"requestedBy": ..., "reason": ...}`. sandman decodes
-that body with `DisallowUnknownFields`, so the app sends those two fields and
-nothing else.
-
-A phase the app does not recognise — from a sandman newer than it — decodes as
-`Unknown` rather than failing the whole response.
-
-## Layout
-
-```
-app/src/main/java/cloud/hauke/sandman/
-├── data/
-│   ├── model/Device.kt         the API's types, mirroring internal/server/types.go
-│   ├── remote/SandmanClient.kt OkHttp + kotlinx.serialization; base URL is per-call
-│   ├── remote/SandmanException.kt  every failure, in the words the UI shows
-│   ├── SettingsRepository.kt   DataStore; excluded from backups (it holds the token)
-│   └── DeviceRepository.kt     attaches "who asked" to every power request
-└── ui/
-    ├── devices/                the fleet
-    ├── detail/                 one machine, polled harder while it moves
-    ├── settings/               address, token, name, refresh
-    └── components/             phase badges, the confirm dialog, time formatting
-```
-
-Kotlin, Jetpack Compose and Material 3, `minSdk 26`. No dependency-injection
-framework: `AppContainer` builds the three objects the app needs by hand.
+For any inquiries or support requests, please open an issue in this
+repository or contact us at [contact@hauke.cloud](mailto:contact@hauke.cloud).
